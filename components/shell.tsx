@@ -32,6 +32,7 @@ interface Badges {
   critical: number;
   discovered: number;
   mqtt: { mode: string; state: string; clients: number; detail: string | null };
+  feed: { demo: boolean; intervalSec: number; lastDataAt: string | null };
   reefers: { id: number; containerNo: string; name: string | null; tags: string }[];
 }
 
@@ -222,7 +223,14 @@ function TopBar({ badges, onMenu }: { badges?: Badges; onMenu: () => void }) {
   };
 
   const m = badges?.mqtt;
-  const mqttOk = m && (m.state === 'listening' || m.state === 'connected');
+  const feed = badges?.feed;
+  const demo = !!feed?.demo;
+  const streaming = demo && !!feed?.lastDataAt && Date.now() - new Date(feed.lastDataAt).getTime() < Math.max(60, feed.intervalSec * 3) * 1000;
+  const mqttOk = demo ? streaming : m && (m.state === 'listening' || m.state === 'connected');
+  const chipTitle = demo ? 'Demo data generator — Settings → MQTT' : (m?.detail ?? undefined);
+  const chipLabel = demo ? 'Data' : 'MQTT';
+  const chipLong = demo ? (streaming ? 'streaming' : 'waiting…') : m ? (m.mode === 'builtin' ? `${m.state} · ${m.clients} gateway${m.clients === 1 ? '' : 's'}` : m.state) : '…';
+  const chipShort = demo ? '' : m ? (m.mode === 'builtin' ? `· ${m.clients}` : '') : '';
 
   return (
     <header className="sticky top-0 z-30 flex items-center gap-3 border-b bg-white/80 px-4 py-3 backdrop-blur dark:bg-slate-950/80 sm:px-6 lg:px-8">
@@ -233,16 +241,16 @@ function TopBar({ badges, onMenu }: { badges?: Badges; onMenu: () => void }) {
       <div className="ml-auto flex items-center gap-2">
         <Link
           href="/settings?tab=mqtt"
-          title={m?.detail ?? undefined}
+          title={chipTitle}
           className={clsx(
             'hidden shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset sm:flex',
             mqttOk ? 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30' : 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/30',
           )}
         >
           <span className={clsx('h-2 w-2 rounded-full', mqttOk ? 'bg-emerald-500' : 'bg-red-500')} />
-          MQTT
-          <span className="hidden xl:inline">{m ? (m.mode === 'builtin' ? `${m.state} · ${m.clients} gateway${m.clients === 1 ? '' : 's'}` : m.state) : '…'}</span>
-          <span className="xl:hidden">{m ? (m.mode === 'builtin' ? `· ${m.clients}` : '') : ''}</span>
+          {chipLabel}
+          <span className="hidden xl:inline">{demo ? `· ${chipLong}` : chipLong}</span>
+          {chipShort && <span className="xl:hidden">{chipShort}</span>}
         </Link>
         <span title={live ? 'Live updates connected' : 'Reconnecting…'} className="hidden items-center gap-1.5 text-xs text-slate-500 md:flex">
           <span className={clsx('h-2 w-2 rounded-full', live ? 'bg-brand-500' : 'bg-slate-400')} />
