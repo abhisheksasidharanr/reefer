@@ -1,0 +1,215 @@
+// Reefer Monitor — PostgreSQL.
+// JSON blobs are stored as TEXT and parsed in code.
+// All timestamps are UTC.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique @db.VarChar(191)
+  name         String    @db.VarChar(100)
+  passwordHash String    @map("password_hash")
+  /// admin | operator | viewer
+  role         String    @default("operator") @db.VarChar(20)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+/// Key/value settings; value is a JSON document (see lib/settings.ts for the shapes and defaults).
+model Setting {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+model Reefer {
+  id             Int       @id @default(autoincrement())
+  containerNo    String    @unique @map("container_no") @db.VarChar(20)
+  /// Identifier the unit reports in MQTT (defaults to the container number)
+  deviceId       String    @unique @map("device_id") @db.VarChar(64)
+  name           String?   @db.VarChar(100)
+  brand          String?   @db.VarChar(60)
+  model          String?   @db.VarChar(60)
+  /// Cargo set point the unit is expected to hold (°C)
+  targetTemp     Float?    @map("target_temp")
+  /// Per-reefer allowed deviation override (°C); null = rule default
+  tolerance      Float?
+  /// Comma-separated tags used by alert-rule scopes
+  tags           String    @default("") @db.VarChar(255)
+  notes          String?   @db.Text
+  active         Boolean   @default(true)
+
+  // Latest snapshot from MQTT
+  lastSeenAt     DateTime? @map("last_seen_at")
+  setTemp        Float?    @map("set_temp")
+  supplyTemp     Float?    @map("supply_temp")
+  returnTemp     Float?    @map("return_temp")
+  humidity       Float?
+  voltage        Float?
+  current        Float?
+  powerOn        Boolean?  @map("power_on")
+  faultCode      Int?      @map("fault_code")
+  mode           String?   @db.VarChar(40)
+  runHours       Float?    @map("run_hours")
+  /// Unmapped payload fields (JSON object)
+  extra          String?   @db.Text
+
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  readings       Reading[]
+  alerts         Alert[]
+  commands       Command[]
+
+  @@map("reefers")
+}
+
+model Reading {
+  id         BigInt   @id @default(autoincrement())
+  reeferId   Int      @map("reefer_id")
+  reefer     Reefer   @relation(fields: [reeferId], references: [id], onDelete: Cascade)
+  at         DateTime
+  setTemp    Float?   @map("set_temp")
+  supplyTemp Float?   @map("supply_temp")
+  returnTemp Float?   @map("return_temp")
+  humidity   Float?
+  voltage    Float?
+  current    Float?
+  powerOn    Boolean? @map("power_on")
+  faultCode  Int?     @map("fault_code")
+
+  @@index([reeferId, at])
+  @@index([at])
+  @@map("readings")
+}
+
+model AlertRule {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  enabled     Boolean  @default(true)
+  /// supply_temp | return_temp | set_temp | deviation | target_mismatch | humidity | voltage | current | power_off | fault | offline
+  metric      String   @db.VarChar(30)
+  /// gt | gte | lt | lte | eq | neq | outside | between (ignored for boolean metrics)
+  operator    String   @default("gt") @db.VarChar(10)
+  threshold   Float    @default(0)
+  threshold2  Float?
+  /// Deviation rules: threshold = reefer tolerance (or site default) + `threshold` as an extra margin
+  useTolerance Boolean @default(false) @map("use_tolerance")
+  /// Condition must hold this long before an alert opens
+  durationSec Int      @default(0) @map("duration_sec")
+  /// info | warning | critical
+  severity    String   @default("warning") @db.VarChar(10)
+  /// all | tags | reefers
+  scope       String   @default("all") @db.VarChar(10)
+  /// JSON array of tags or reefer ids
+  scopeValue  String   @default("[]") @map("scope_value") @db.Text
+  /// Re-notify an unacknowledged alert every N minutes (0 = once)
+  repeatMin   Int      @default(0) @map("repeat_min")
+  notifyEmail Boolean  @default(false) @map("notify_email")
+  notifyHook  Boolean  @default(false) @map("notify_hook")
+  autoResolve Boolean  @default(true) @map("auto_resolve")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  alerts      Alert[]
+
+  @@map("alert_rules")
+}
+
+/// Per-reefer customisation of a rule: switch it off for this reefer or change its limits.
+/// Null fields fall back to the rule's own value.
+model RuleOverride {
+  ruleId      Int      @map("rule_id")
+  reeferId    Int      @map("reefer_id")
+  enabled     Boolean  @default(true)
+  threshold   Float?
+  threshold2  Float?
+  durationSec Int?     @map("duration_sec")
+  severity    String?  @db.VarChar(10)
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@id([ruleId, reeferId])
+  @@index([reeferId])
+  @@map("rule_overrides")
+}
+
+/// Tracks since when a rule's condition has been true for a reefer (for durations).
+model RuleState {
+  ruleId     Int      @map("rule_id")
+  reeferId   Int      @map("reefer_id")
+  since      DateTime
+  /// Set when someone resolves the alert by hand while the condition still holds:
+  /// no new alert until the condition has cleared once.
+  suppressed Boolean  @default(false)
+
+  @@id([ruleId, reeferId])
+  @@map("rule_states")
+}
+
+model Alert {
+  id             Int       @id @default(autoincrement())
+  ruleId         Int?      @map("rule_id")
+  rule           AlertRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  reeferId       Int       @map("reefer_id")
+  reefer         Reefer    @relation(fields: [reeferId], references: [id], onDelete: Cascade)
+  severity       String    @db.VarChar(10)
+  /// active | acknowledged | resolved
+  status         String    @default("active") @db.VarChar(15)
+  title          String    @db.VarChar(200)
+  message        String    @db.Text
+  value          Float?
+  triggeredAt    DateTime  @default(now()) @map("triggered_at")
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  acknowledgedBy String?   @map("acknowledged_by") @db.VarChar(100)
+  resolvedAt     DateTime? @map("resolved_at")
+  resolvedBy     String?   @map("resolved_by") @db.VarChar(100)
+  lastNotifiedAt DateTime? @map("last_notified_at")
+  note           String?   @db.Text
+
+  @@index([status, triggeredAt])
+  @@index([reeferId, status])
+  @@map("alerts")
+}
+
+model Command {
+  id        Int      @id @default(autoincrement())
+  reeferId  Int      @map("reefer_id")
+  reefer    Reefer   @relation(fields: [reeferId], references: [id], onDelete: Cascade)
+  /// setpoint | power
+  type      String   @db.VarChar(20)
+  value     String   @db.VarChar(40)
+  /// sent | failed
+  status    String   @db.VarChar(10)
+  error     String?  @db.Text
+  createdBy String   @map("created_by") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([reeferId, createdAt])
+  @@map("commands")
+}
+
+/// Devices seen on MQTT that are not registered yet.
+model DiscoveredDevice {
+  deviceId    String   @id @map("device_id") @db.VarChar(64)
+  topic       String   @db.VarChar(255)
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @map("last_seen_at")
+  messages    Int      @default(1)
+  lastPayload String   @map("last_payload") @db.Text
+  ignored     Boolean  @default(false)
+
+  @@map("discovered_devices")
+}

@@ -1,0 +1,47 @@
+{
+  "name": "reefer-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 4000",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test lib/**/*.test.ts",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "simulate": "tsx scripts/simulate.ts",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "aedes": "0.51.3",
+    "bcryptjs": "2.4.3",
+    "clsx": "2.1.1",
+    "jose": "5.9.3",
+    "lucide-react": "0.451.0",
+    "mqtt": "5.10.1",
+    "next": "14.2.35",
+    "nodemailer": "6.9.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.13.0",
+    "three": "0.169.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "22.7.5",
+    "@types/nodemailer": "6.4.16",
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.0",
+    "@types/three": "0.169.0",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.47",
+    "prisma": "5.22.0",
+    "tailwindcss": "3.4.13",
+    "tsx": "4.19.1",
+    "typescript": "5.6.3"
+  }
+}
