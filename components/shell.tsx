@@ -64,7 +64,7 @@ function Frame({ children }: { children: ReactNode }) {
   // Desktop sidebar: icon rail by default, slides open on hover; can be pinned open.
   const [pinned, setPinned] = useState(false);
   const [hover, setHover] = useState(false);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const expanded = pinned || hover;
   const badges = useData<Badges>('/api/badges');
   useLive(['alert', 'mqtt'], () => badges.refresh(), 2000);

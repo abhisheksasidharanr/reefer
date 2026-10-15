@@ -5,7 +5,7 @@ readings, shows them live, and raises configurable alerts (in-app, email, webhoo
 Reefers are registered with identity and temperature settings only (container no., device ID, name, brand/model,
 target temperature, allowed deviation, tags) — no yard position, no customer/owner/commodity.
 
-**Stack:** Next.js 14 (App Router) · Prisma · MySQL / MariaDB · Tailwind · Recharts · MQTT (built-in Aedes broker or any external broker).
+**Stack:** Next.js 15 (App Router) · React 19 · Prisma · MySQL / MariaDB · Tailwind · Recharts · MQTT (built-in Aedes broker or any external broker).
 
 ## Quick start
 

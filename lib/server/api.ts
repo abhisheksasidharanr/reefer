@@ -13,6 +13,8 @@ export class HttpError extends Error {
 }
 
 type Ctx = { params: Record<string, string> };
+/** What Next.js passes to a route handler (dynamic segments arrive as a promise since Next 15). */
+type RouteCtx = { params: Promise<Record<string, string>> };
 type Handler = (req: NextRequest, ctx: Ctx & { session: Session }) => Promise<unknown>;
 
 /**
@@ -20,12 +22,12 @@ type Handler = (req: NextRequest, ctx: Ctx & { session: Session }) => Promise<un
  * `{ error }` responses, and serialises the result (BigInt-safe).
  */
 export function route(handler: Handler, role: Role = 'viewer') {
-  return async (req: NextRequest, ctx: Ctx) => {
+  return async (req: NextRequest, ctx: RouteCtx) => {
     try {
       const session = await getSession();
       if (!session) throw new HttpError(401, 'Please sign in');
       if (!atLeast(session.role, role)) throw new HttpError(403, 'You do not have permission for this action');
-      const result = await handler(req, { ...ctx, session });
+      const result = await handler(req, { params: (await ctx.params) ?? {}, session });
       if (result instanceof Response) return result;
       return new NextResponse(JSON.stringify(result ?? { ok: true }, (_, v) => (typeof v === 'bigint' ? Number(v) : v)), {
         headers: { 'content-type': 'application/json' },

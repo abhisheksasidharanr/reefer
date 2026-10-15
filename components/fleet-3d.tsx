@@ -91,7 +91,7 @@ export function Fleet3D({
     built: Built | null;
     hovered: number | null;
     raf: number;
-  }>();
+  }>(undefined);
 
   // ── one-time scene setup ──
   useEffect(() => {

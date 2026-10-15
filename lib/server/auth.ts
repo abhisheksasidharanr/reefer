@@ -44,7 +44,7 @@ export async function readSession(token: string | undefined): Promise<Session | 
 }
 
 export async function getSession(): Promise<Session | null> {
-  return readSession(cookies().get(SESSION_COOKIE)?.value);
+  return readSession((await cookies()).get(SESSION_COOKIE)?.value);
 }
 
 /** `persistHours` keeps the cookie across browser restarts; without it the cookie ends with the browser session. */
