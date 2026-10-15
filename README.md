@@ -5,7 +5,7 @@ readings, shows them live, and raises configurable alerts (in-app, email, webhoo
 Reefers are registered with identity and temperature settings only (container no., device ID, name, brand/model,
 target temperature, allowed deviation, tags) — no yard position, no customer/owner/commodity.
 
-**Stack:** Next.js 14 (App Router) · Prisma · PostgreSQL · Tailwind · Recharts · MQTT (built-in Aedes broker or any external broker).
+**Stack:** Next.js 14 (App Router) · Prisma · MySQL / MariaDB · Tailwind · Recharts · MQTT (built-in Aedes broker or any external broker).
 
 ## Quick start
 
@@ -90,4 +90,4 @@ npm run typecheck
 
 ## Deployment
 
-See [deploy/RENDER.md](deploy/RENDER.md) for hosting on Render (`render.yaml` Blueprint). `npm start` listens on `$PORT` (default 3000); on first start against an empty database the app creates the admin from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and the default alert rules.
+See [deploy/HOSTINGER.md](deploy/HOSTINGER.md) for hosting on a Hostinger Node.js web app. `npm start` listens on `$PORT` (default 3000); on first start against an empty database the app creates the admin from `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` and the default alert rules.

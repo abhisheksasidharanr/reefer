@@ -12,7 +12,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "simulate": "tsx scripts/simulate.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:sql": "prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

@@ -1,5 +1,5 @@
-// Reefer Monitor — PostgreSQL.
-// JSON blobs are stored as TEXT and parsed in code.
+// Reefer Monitor — MySQL / MariaDB.
+// JSON blobs are stored as LONGTEXT (MariaDB's JSON is only an alias) and parsed in code.
 // All timestamps are UTC.
 
 generator client {
@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -28,7 +28,7 @@ model User {
 /// Key/value settings; value is a JSON document (see lib/settings.ts for the shapes and defaults).
 model Setting {
   key       String   @id @db.VarChar(64)
-  value     String   @db.Text
+  value     String   @db.LongText
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("settings")
@@ -64,7 +64,7 @@ model Reefer {
   mode           String?   @db.VarChar(40)
   runHours       Float?    @map("run_hours")
   /// Unmapped payload fields (JSON object)
-  extra          String?   @db.Text
+  extra          String?   @db.LongText
 
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
@@ -208,7 +208,7 @@ model DiscoveredDevice {
   firstSeenAt DateTime @default(now()) @map("first_seen_at")
   lastSeenAt  DateTime @map("last_seen_at")
   messages    Int      @default(1)
-  lastPayload String   @map("last_payload") @db.Text
+  lastPayload String   @map("last_payload") @db.LongText
   ignored     Boolean  @default(false)
 
   @@map("discovered_devices")

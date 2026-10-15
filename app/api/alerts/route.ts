@@ -15,7 +15,7 @@ export const GET = route(async (req) => {
     ...(status === 'open' ? { status: { in: ['active', 'acknowledged'] } } : status !== 'all' ? { status } : {}),
     ...(sp.get('severity') ? { severity: sp.get('severity')! } : {}),
     ...(sp.get('reeferId') ? { reeferId: Number(sp.get('reeferId')) } : {}),
-    ...(q ? { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { reefer: { containerNo: { contains: q, mode: 'insensitive' as const } } }, { reefer: { name: { contains: q, mode: 'insensitive' as const } } }] } : {}),
+    ...(q ? { OR: [{ title: { contains: q } }, { reefer: { containerNo: { contains: q } } }, { reefer: { name: { contains: q } } }] } : {}),
   };
   const [rows, total, counts] = await Promise.all([
     db.alert.findMany({
