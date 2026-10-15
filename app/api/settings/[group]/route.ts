@@ -38,6 +38,7 @@ const schemas = {
     commandsEnabled: z.boolean(),
     demoFeed: z.boolean(),
     demoIntervalSec: z.coerce.number().int().min(2).max(300),
+    demoIncidentSec: z.coerce.number().int().min(0).max(3600),
   }),
   mapping: z.object({
     deviceId: z.string().trim().min(1, 'is required').max(200),

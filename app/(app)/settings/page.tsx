@@ -266,15 +266,18 @@ function MqttTab() {
           </div>
         </Card>
         <Card title="Demo data" subtitle="For demos and testing when no gateway can reach the broker (e.g. shared hosting)">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_160px] sm:items-end">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_160px_160px] sm:items-end">
             <Switch
               checked={v.demoFeed}
               onChange={(x) => set('demoFeed', x)}
               label="Generate demo data"
-              description="Adds 6 sample reefers and streams realistic readings for them, plus one unregistered unit for “Discovered”. Includes a temperature excursion, a fault and a unit switching off, so alerts fire too. Set point and power commands work on the sample units."
+              description="Adds 6 sample reefers and streams realistic readings for them. New devices keep turning up under “Discovered”, and short incidents (faults, set point changes, voltage sags, humidity spikes, overcurrent, warm excursions) keep the alerts busy. Set point and power commands work on the simulated units."
             />
-            <Field label="Every (seconds)">
+            <Field label="Readings every (s)">
               <input className="input tabular" type="number" min={2} max={300} value={v.demoIntervalSec} onChange={(e) => set('demoIntervalSec', Number(e.target.value))} disabled={!v.demoFeed} />
+            </Field>
+            <Field label="New incident every (s)" hint="0 = only occasional">
+              <input className="input tabular" type="number" min={0} max={3600} value={v.demoIncidentSec} onChange={(e) => set('demoIncidentSec', Number(e.target.value))} disabled={!v.demoFeed} />
             </Field>
           </div>
         </Card>

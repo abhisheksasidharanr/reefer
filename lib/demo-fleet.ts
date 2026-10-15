@@ -2,7 +2,8 @@
  * Simulated reefer fleet, shared by the command-line simulator (scripts/simulate.ts) and the in-app
  * demo feed (lib/server/demo.ts). Produces the default ("yard gateway") JSON payload.
  *
- * Every unit runs into random incidents, at most one at a time:
+ * Every unit runs into random incidents, at most one at a time (the in-app feed also starts short incidents on a
+ * steady schedule — see startIncident):
  *  - fault codes (1–6 min; the unit slowly warms up while faulted)
  *  - door open / defrost trouble (4–16 min warm excursion — some only reach a warning, some go critical)
  *  - power cut (2–10 min)
@@ -18,7 +19,19 @@ export interface DemoUnit {
   brand: string;
   hours: number;
   /** Running incident, if any (epoch ms end times). */
-  ev: { faultUntil?: number; heat?: number; heatUntil?: number; offUntil?: number; silentUntil?: number };
+  ev: {
+    faultUntil?: number;
+    heat?: number;
+    heatUntil?: number;
+    offUntil?: number;
+    silentUntil?: number;
+    /** Temporary set point change; the original is restored at `setUntil`. */
+    setUntil?: number;
+    restoreSet?: number;
+    /** Temporary sensor readings (voltage sag, humidity spike, overcurrent). */
+    sensor?: { voltage?: number; humidity?: number; current?: number };
+    sensorUntil?: number;
+  };
 }
 
 /** Reefers the demo registers up front (the unregistered TCNU unit shows up under "Discovered"). */
@@ -87,6 +100,8 @@ export function applyDemoCommand(u: DemoUnit, cmd: Record<string, unknown>): boo
   let changed = false;
   if (typeof cmd.setpoint === 'number') {
     u.set = cmd.setpoint;
+    delete u.ev.setUntil; // an operator command overrides a simulated set point change
+    delete u.ev.restoreSet;
     changed = true;
   }
   if (cmd.power === 'on' || cmd.power === 'off') {
@@ -97,7 +112,64 @@ export function applyDemoCommand(u: DemoUnit, cmd: Record<string, unknown>): boo
   return changed;
 }
 
-const busy = (u: DemoUnit) => !!(u.ev.faultUntil || u.ev.heatUntil || u.ev.offUntil || u.ev.silentUntil);
+const busy = (u: DemoUnit) => !!(u.ev.faultUntil || u.ev.heatUntil || u.ev.offUntil || u.ev.silentUntil || u.ev.setUntil || u.ev.sensorUntil);
+export const isBusy = busy;
+
+export type IncidentKind = 'fault' | 'setpoint' | 'voltage' | 'humidity' | 'current' | 'excursion';
+/** Relative frequency of each kind for the steady incident stream. */
+export const INCIDENT_WEIGHTS: [IncidentKind, number][] = [
+  ['fault', 25],
+  ['setpoint', 20],
+  ['voltage', 20],
+  ['humidity', 15],
+  ['current', 15],
+  ['excursion', 5],
+];
+
+export function pickIncidentKind(): IncidentKind {
+  const total = INCIDENT_WEIGHTS.reduce((s, [, w]) => s + w, 0);
+  let r = Math.random() * total;
+  for (const [k, w] of INCIDENT_WEIGHTS) if ((r -= w) < 0) return k;
+  return 'fault';
+}
+
+/**
+ * Start a short incident that the alert rules pick up right away (fault, set point vs target, voltage,
+ * humidity, current) or a longer warm excursion. Returns false if it does not apply to this unit.
+ */
+export function startIncident(u: DemoUnit, kind: IncidentKind, now: number, target: number | null): boolean {
+  if (busy(u) || !u.power) return false;
+  const until = now + between(25, 90) * 1000;
+  const ev = u.ev;
+  switch (kind) {
+    case 'fault':
+      u.fault = pick(FAULT_CODES);
+      ev.faultUntil = until;
+      return true;
+    case 'setpoint':
+      if (target == null) return false;
+      ev.restoreSet = u.set;
+      u.set = Math.round((target + (Math.random() < 0.5 ? -1 : 1) * between(1, 3)) * 10) / 10;
+      ev.setUntil = until;
+      return true;
+    case 'voltage':
+      ev.sensor = { voltage: Math.round(between(330, 355)) };
+      ev.sensorUntil = until;
+      return true;
+    case 'humidity':
+      ev.sensor = { humidity: Math.round(between(96, 99)) };
+      ev.sensorUntil = until;
+      return true;
+    case 'current':
+      ev.sensor = { current: Math.round(between(19, 24) * 10) / 10 };
+      ev.sensorUntil = until;
+      return true;
+    case 'excursion':
+      ev.heat = between(1.2, 1.8);
+      ev.heatUntil = now + between(6, 12) * MIN;
+      return true;
+  }
+}
 
 /** Start a visible incident right away (used shortly after the feed starts so a demo shows something early). */
 export function forceIncident(u: DemoUnit, now: number) {
@@ -131,6 +203,15 @@ export function stepDemoUnit(u: DemoUnit, now: number, stepMs: number) {
     delete ev.offUntil;
   }
   if (ev.silentUntil && now >= ev.silentUntil) delete ev.silentUntil;
+  if (ev.setUntil && now >= ev.setUntil) {
+    if (ev.restoreSet != null) u.set = ev.restoreSet;
+    delete ev.setUntil;
+    delete ev.restoreSet;
+  }
+  if (ev.sensorUntil && now >= ev.sensorUntil) {
+    delete ev.sensor;
+    delete ev.sensorUntil;
+  }
 
   // Maybe start a new one (mean time between incidents per unit ≈ 25 min).
   if (!busy(u)) {
@@ -165,9 +246,9 @@ export function stepDemoUnit(u: DemoUnit, now: number, stepMs: number) {
     settemp: u.set,
     sstemp: Math.round(u.supply * 100) / 100,
     rstemp: Math.round((u.supply + 0.7 + Math.random() * 0.3) * 100) / 100,
-    humidity: Math.round(70 + Math.random() * 20),
-    voltage: Math.round(395 + Math.random() * 15),
-    current: u.power ? Math.round((10 + Math.random() * 3) * 10) / 10 : 0.2,
+    humidity: ev.sensor?.humidity ?? Math.round(70 + Math.random() * 20),
+    voltage: ev.sensor?.voltage != null ? ev.sensor.voltage + Math.round(Math.random() * 4) : Math.round(395 + Math.random() * 15),
+    current: u.power ? (ev.sensor?.current ?? Math.round((10 + Math.random() * 3) * 10) / 10) : 0.2,
     coolerstate: u.power,
     faultcode: u.fault,
     workmode: u.power ? (u.set < -5 ? 'frozen' : 'chill') : 'off',

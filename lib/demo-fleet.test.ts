@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyDemoCommand, checkDigit, forceIncident, makeUnit, randomContainerNo, stepDemoUnit } from './demo-fleet';
+import { applyDemoCommand, checkDigit, forceIncident, makeUnit, randomContainerNo, startIncident, stepDemoUnit } from './demo-fleet';
 
 test('ISO 6346 check digit', () => {
   assert.equal(checkDigit('CSQU305438'), 3); // the standard's own example
@@ -40,4 +40,26 @@ test('silent gateway sends nothing; commands override a power cut', () => {
   applyDemoCommand(u, { power: 'on' });
   assert.equal(u.power, 1);
   assert.equal(u.ev.offUntil, undefined);
+});
+
+test('scheduled incidents produce alert-worthy readings and then clear', () => {
+  const now = Date.now();
+  const cases: [Parameters<typeof startIncident>[1], (p: NonNullable<ReturnType<typeof stepDemoUnit>>) => boolean][] = [
+    ['fault', (p) => p.faultcode > 0],
+    ['setpoint', (p) => Math.abs(p.settemp - 5) >= 1],
+    ['voltage', (p) => p.voltage < 360],
+    ['humidity', (p) => p.humidity > 95],
+    ['current', (p) => p.current > 18],
+  ];
+  for (const [kind, alerting] of cases) {
+    const u = makeUnit('TESTU0000002', 5);
+    assert.ok(startIncident(u, kind, now, 5), kind);
+    assert.ok(!startIncident(u, 'fault', now, 5), `${kind}: one incident at a time`);
+    const during = stepDemoUnit(u, now + 1_000, 5_000)!;
+    assert.ok(alerting(during), `${kind} should trip its rule`);
+    stepDemoUnit(u, now + 91_000, 5_000); // all short incidents last at most 90 s
+    if (kind === 'setpoint') assert.equal(u.set, 5);
+    assert.equal(u.ev.sensor, undefined);
+  }
+  assert.ok(!startIncident(makeUnit('TESTU0000003', 5), 'setpoint', now, null), 'set point incidents need a target');
 });

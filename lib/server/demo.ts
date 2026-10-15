@@ -1,4 +1,5 @@
-import { applyDemoCommand, createDemoFleet, DEMO_REEFERS, DemoUnit, forceIncident, makeUnit, randomContainerNo, stepDemoUnit } from '../demo-fleet';
+import { applyDemoCommand, createDemoFleet, DEMO_REEFERS, DemoUnit, forceIncident, isBusy, makeUnit, pickIncidentKind, randomContainerNo, startIncident, stepDemoUnit } from '../demo-fleet';
+import { invalidateRules } from './alerts';
 import { db } from './db';
 import { holdLease } from './lease';
 import { getSettings } from './settings';
@@ -11,6 +12,9 @@ import { getSettings } from './settings';
  * New devices: whenever no simulated device is waiting under "Discovered", a new one appears after a short random
  * delay (one at a time). Registered ones keep reporting; ignored ones stop. The fleet list is kept in the
  * settings table ("demo:fleet") so it survives restarts and every copy knows which devices are simulated.
+ *
+ * Incidents: besides occasional random ones, a short incident starts on a random registered unit every
+ * `demoIncidentSec` seconds, so alerts keep coming during a demo.
  */
 interface DemoState {
   units: DemoUnit[];
@@ -20,12 +24,15 @@ interface DemoState {
   running: boolean;
   kickAt?: number;
   nextNewAt?: number;
+  nextIncidentAt?: number;
+  /** Registered simulated devices → cargo target (°C) */
+  targets: Map<string, number | null>;
 }
 
 const FLEET_KEY = 'demo:fleet';
 const MAX_UNITS = 40;
 const g = globalThis as unknown as { __demo?: DemoState; __demoLoop?: boolean; __demoIds?: { ids: Set<string>; at: number } };
-const st: DemoState = (g.__demo ??= { units: [], tick: 0, lastCommandAt: new Date(), registered: false, running: false });
+const st: DemoState = (g.__demo ??= { units: [], tick: 0, lastCommandAt: new Date(), registered: false, running: false, targets: new Map() });
 
 export const demoRunning = () => st.running;
 
@@ -66,11 +73,35 @@ async function saveFleet() {
   g.__demoIds = { ids: new Set(st.units.map((u) => u.id)), at: Date.now() };
 }
 
+/** Extra rules the incident stream relies on; only added when no rule exists yet for that metric. */
+const DEMO_RULES = [
+  { name: 'Low supply voltage', description: 'Mains voltage is sagging — check the power supply.', metric: 'voltage', operator: 'lt', threshold: 360, durationSec: 0, severity: 'warning' },
+  { name: 'High humidity', description: 'Humidity inside the container is unusually high.', metric: 'humidity', operator: 'gt', threshold: 95, durationSec: 0, severity: 'warning' },
+  { name: 'Compressor overcurrent', description: 'The unit draws more current than normal — possible compressor trouble.', metric: 'current', operator: 'gt', threshold: 18, durationSec: 0, severity: 'critical' },
+];
+
 async function registerDemoReefers() {
   for (const r of DEMO_REEFERS) {
     await db.reefer.upsert({ where: { containerNo: r.containerNo }, update: {}, create: { ...r, deviceId: r.containerNo } });
   }
+  let added = false;
+  for (const r of DEMO_RULES) {
+    if ((await db.alertRule.count({ where: { metric: r.metric } })) === 0) {
+      await db.alertRule.create({ data: r });
+      added = true;
+    }
+  }
+  if (added) invalidateRules();
   st.registered = true;
+}
+
+/** Start one short incident on a random registered, idle unit. */
+function scheduledIncident(now: number) {
+  const candidates = st.units.filter((u) => st.targets.has(u.id) && !isBusy(u) && u.power);
+  for (let attempt = 0; attempt < 10 && candidates.length; attempt++) {
+    const u = candidates[Math.floor(Math.random() * candidates.length)];
+    if (startIncident(u, pickIncidentKind(), now, st.targets.get(u.id) ?? null)) return;
+  }
 }
 
 async function applyNewCommands() {
@@ -92,10 +123,11 @@ async function applyNewCommands() {
 async function manageNewDevices(now: number) {
   const ids = st.units.map((u) => u.id);
   const [registered, ignored] = await Promise.all([
-    db.reefer.findMany({ where: { deviceId: { in: ids } }, select: { deviceId: true } }),
+    db.reefer.findMany({ where: { deviceId: { in: ids } }, select: { deviceId: true, targetTemp: true } }),
     db.discoveredDevice.findMany({ where: { deviceId: { in: ids }, ignored: true }, select: { deviceId: true } }),
   ]);
   const reg = new Set(registered.map((r) => r.deviceId));
+  st.targets = new Map(registered.map((r) => [r.deviceId, r.targetTemp]));
   const ign = new Set(ignored.map((d) => d.deviceId));
   let changed = false;
   if (ign.size) {
@@ -135,6 +167,7 @@ export function startDemoLoop(inject: (topic: string, payload: Buffer) => void) 
         st.tick = 0;
         st.lastCommandAt = new Date();
         st.kickAt = now + 45_000;
+        st.nextIncidentAt = undefined;
       }
       st.running = !!leader;
       if (leader) {
@@ -145,6 +178,13 @@ export function startDemoLoop(inject: (topic: string, payload: Buffer) => void) 
           const base = st.units.filter((u) => DEMO_REEFERS.some((r) => r.containerNo === u.id));
           if (base.length) forceIncident(base[Math.floor(Math.random() * base.length)], now);
           st.kickAt = undefined;
+        }
+        if (s.demoIncidentSec > 0) {
+          st.nextIncidentAt ??= now + s.demoIncidentSec * 1000;
+          if (now >= st.nextIncidentAt) {
+            scheduledIncident(now);
+            st.nextIncidentAt = now + s.demoIncidentSec * 1000;
+          }
         }
         st.tick++;
         for (const u of st.units) {

@@ -36,6 +36,8 @@ export interface MqttSettings {
   /** Generate simulated reefer telemetry inside the app (for demos; no gateway or open port needed) */
   demoFeed: boolean;
   demoIntervalSec: number;
+  /** Start a new short incident (→ alert) on a random demo reefer every N seconds; 0 = only occasional random ones */
+  demoIncidentSec: number;
 }
 
 /** Where each canonical field comes from in the JSON payload (dot paths, e.g. "data.temp.supply"). */
@@ -107,6 +109,7 @@ export const DEFAULTS: AllSettings = {
     commandsEnabled: true,
     demoFeed: false,
     demoIntervalSec: 5,
+    demoIncidentSec: 120,
   },
   mapping: {
     deviceId: 'payload:containerNo',
