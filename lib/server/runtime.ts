@@ -2,8 +2,11 @@ import { invalidateRules, sweep } from './alerts';
 import { ensureBaseData } from './bootstrap';
 import { bus } from './bus';
 import { db } from './db';
-import { startMqtt } from './mqtt';
+import { startDemoLoop } from './demo';
+import { holdLease } from './lease';
+import { onMessage, startMqtt } from './mqtt';
 import { getSettings } from './settings';
+import { startWatcher } from './watch';
 
 const g = globalThis as unknown as { __runtimeStarted?: boolean };
 
@@ -22,8 +25,20 @@ export async function startRuntime() {
     if (key === 'mqtt') startMqtt().catch((e) => console.error('[runtime] mqtt restart', e));
   });
 
-  // Offline detection, sustained durations and reminders.
-  setInterval(() => sweep().catch((e) => console.error('[runtime] sweep', e)), 30_000);
+  // Live updates produced by other copies of the app (hosts that run several).
+  startWatcher();
+
+  // In-app demo data (Settings → MQTT → Demo data).
+  startDemoLoop(onMessage);
+
+  // Offline detection, sustained durations and reminders — one copy at a time, so alerts are not doubled.
+  setInterval(async () => {
+    try {
+      if (await holdLease('sweep', 90_000)) await sweep();
+    } catch (e) {
+      console.error('[runtime] sweep', e);
+    }
+  }, 30_000);
 
   // Retention: purge old readings every hour.
   const purge = async () => {

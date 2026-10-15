@@ -4,6 +4,7 @@ import mqtt, { MqttClient } from 'mqtt';
 import net from 'node:net';
 import type { MqttSettings } from '../settings-schema';
 import { bus } from './bus';
+import { isDemoDevice } from './demo';
 import { handleMessage } from './ingest';
 import { getSettings } from './settings';
 
@@ -52,7 +53,8 @@ export function topicMatches(filter: string, topic: string): boolean {
   return f.length === t.length;
 }
 
-function onMessage(topic: string, payload: Buffer) {
+/** Entry point for every incoming message (broker, external client or the in-app demo feed). */
+export function onMessage(topic: string, payload: Buffer) {
   // Counters only — no bus event per message (state changes are announced by setStatus).
   rt.status = { ...rt.status, messages: rt.status.messages + 1, lastMessageAt: new Date().toISOString() };
   handleMessage(topic, payload).catch((e) => console.error('[mqtt] ingest failed', e));
@@ -131,6 +133,8 @@ export async function publishCommand(deviceId: string, body: Record<string, unkn
   const s = await getSettings('mqtt');
   if (!s.commandsEnabled) throw new Error('Remote commands are disabled in Settings');
   const topic = s.commandTopic.replaceAll('{deviceId}', deviceId);
+  // Demo units are simulated in-app: the feed picks the command up from the commands table.
+  if (s.demoFeed && isDemoDevice(deviceId)) return `${topic} (demo)`;
   const payload = Buffer.from(JSON.stringify({ ...body, ts: new Date().toISOString() }));
   if (rt.broker) {
     await new Promise<void>((resolve, reject) =>

@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { CheckCircle2, Pause, Play, Plug, Plus, RefreshCw, Save, Send, Trash2, XCircle } from 'lucide-react';
+import { CheckCircle2, FlaskConical, Pause, Play, Plug, Plus, RefreshCw, Save, Send, Trash2, XCircle } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useCan, useLive, useMe } from '@/components/providers';
@@ -175,6 +175,7 @@ interface Logged {
 interface MqttInfo {
   status: { mode: string; state: string; detail: string | null; port: number | null; url: string | null; topic: string; clients: number; messages: number; lastMessageAt: string | null; since: string };
   messages: Logged[];
+  demo: { enabled: boolean; intervalSec: number; generatingHere: boolean };
 }
 
 function MqttTab() {
@@ -264,6 +265,19 @@ function MqttTab() {
             </div>
           </div>
         </Card>
+        <Card title="Demo data" subtitle="For demos and testing when no gateway can reach the broker (e.g. shared hosting)">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_160px] sm:items-end">
+            <Switch
+              checked={v.demoFeed}
+              onChange={(x) => set('demoFeed', x)}
+              label="Generate demo data"
+              description="Adds 6 sample reefers and streams realistic readings for them, plus one unregistered unit for “Discovered”. Includes a temperature excursion, a fault and a unit switching off, so alerts fire too. Set point and power commands work on the sample units."
+            />
+            <Field label="Every (seconds)">
+              <input className="input tabular" type="number" min={2} max={300} value={v.demoIntervalSec} onChange={(e) => set('demoIntervalSec', Number(e.target.value))} disabled={!v.demoFeed} />
+            </Field>
+          </div>
+        </Card>
         <SaveBar dirty={dirty} busy={busy} onSave={save} />
       </div>
 
@@ -298,6 +312,15 @@ function MqttTab() {
                   {s.detail && <div className="text-xs text-red-700 dark:text-red-300">{s.detail}</div>}
                 </div>
               </div>
+              {info.data?.demo.enabled && (
+                <div className="flex items-center gap-3 rounded-xl bg-violet-50 p-3 text-sm dark:bg-violet-500/10">
+                  <FlaskConical className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
+                  <div>
+                    <div className="font-medium">Demo data on</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Simulated readings every {info.data.demo.intervalSec} s for the sample reefers.</div>
+                  </div>
+                </div>
+              )}
               <dl className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <dt className="text-xs text-slate-500">{s.mode === 'builtin' ? 'Gateways connected' : 'Broker'}</dt>

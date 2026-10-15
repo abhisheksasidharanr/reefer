@@ -33,6 +33,9 @@ export interface MqttSettings {
   /** Command topic template; {deviceId} is replaced */
   commandTopic: string;
   commandsEnabled: boolean;
+  /** Generate simulated reefer telemetry inside the app (for demos; no gateway or open port needed) */
+  demoFeed: boolean;
+  demoIntervalSec: number;
 }
 
 /** Where each canonical field comes from in the JSON payload (dot paths, e.g. "data.temp.supply"). */
@@ -102,6 +105,8 @@ export const DEFAULTS: AllSettings = {
     qos: 1,
     commandTopic: 'reefer/{deviceId}/command',
     commandsEnabled: true,
+    demoFeed: false,
+    demoIntervalSec: 5,
   },
   mapping: {
     deviceId: 'payload:containerNo',

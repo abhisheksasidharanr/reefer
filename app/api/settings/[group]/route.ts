@@ -36,6 +36,8 @@ const schemas = {
     qos: z.coerce.number().int().min(0).max(2),
     commandTopic: z.string().trim().min(1).max(255),
     commandsEnabled: z.boolean(),
+    demoFeed: z.boolean(),
+    demoIntervalSec: z.coerce.number().int().min(2).max(300),
   }),
   mapping: z.object({
     deviceId: z.string().trim().min(1, 'is required').max(200),
