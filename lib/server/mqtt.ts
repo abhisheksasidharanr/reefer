@@ -134,7 +134,7 @@ export async function publishCommand(deviceId: string, body: Record<string, unkn
   if (!s.commandsEnabled) throw new Error('Remote commands are disabled in Settings');
   const topic = s.commandTopic.replaceAll('{deviceId}', deviceId);
   // Demo units are simulated in-app: the feed picks the command up from the commands table.
-  if (s.demoFeed && isDemoDevice(deviceId)) return `${topic} (demo)`;
+  if (s.demoFeed && (await isDemoDevice(deviceId))) return `${topic} (demo)`;
   const payload = Buffer.from(JSON.stringify({ ...body, ts: new Date().toISOString() }));
   if (rt.broker) {
     await new Promise<void>((resolve, reject) =>
