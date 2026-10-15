@@ -16,7 +16,8 @@ export async function startRuntime() {
   // First start on an empty database: admin from env + default rules.
   await ensureBaseData(db, (m) => console.log(`[runtime] ${m}`)).catch((e) => console.error('[runtime] bootstrap failed', e));
 
-  await startMqtt();
+  // Never let a broker or database problem stop the web server from starting.
+  await startMqtt().catch((e) => console.error('[runtime] mqtt start failed', e));
   bus.on('settings', (key: string) => {
     if (key === 'mqtt') startMqtt().catch((e) => console.error('[runtime] mqtt restart', e));
   });
